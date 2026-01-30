@@ -345,12 +345,12 @@ class AIWebsiteReaderApp(QMainWindow):
         
         # Main content
         tabs = QTabWidget()
-        tabs.addTab(self.create_summarize_tab(), "📋 Резюме")
-        tabs.addTab(self.create_analyze_tab(), "❓ Анализ")
-        tabs.addTab(self.create_extract_tab(), "📄 Текст")
-        tabs.addTab(self.create_tts_tab(), "🎙️ Озвучивание")
-        tabs.addTab(self.create_history_tab(), "📊 История")
-        tabs.addTab(self.create_help_tab(), "ℹ️ Справка")
+        tabs.addTab(self.create_summarize_tab(), " Содержание")
+        tabs.addTab(self.create_analyze_tab(), " Анализ")
+        tabs.addTab(self.create_extract_tab(), " Текст")
+        tabs.addTab(self.create_tts_tab(), " Озвучивание")
+        tabs.addTab(self.create_history_tab(), " История")
+        tabs.addTab(self.create_help_tab(), "ℹ Справка")
         
         main_layout.addWidget(sidebar)
         main_layout.addWidget(tabs, 1)
@@ -408,7 +408,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addSpacing(15)
         
         # Model section
-        model_label = QLabel("🧠 Модель ИИ:")
+        model_label = QLabel(" Модель ИИ:")
         model_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(model_label)
         
@@ -447,7 +447,8 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(sep2)
         
         # Info box
-        info = QLabel("💡 Совет:\nСохраняйте API\nключ в переменной\nокружения\nOPENAI_API_KEY")
+
+        info = QLabel("")
         info.setFont(QFont("Segoe UI", 9))
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info.setStyleSheet("background-color: #f0f0f0; padding: 12px; border-radius: 6px; color: #666;")
@@ -595,16 +596,16 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(self.url_input_extract)
         
         # Button
-        self.extract_btn = QPushButton("📥 Извлечь текст")
+        self.extract_btn = QPushButton(" Извлечь текст")
         self.extract_btn.setMinimumHeight(45)
         self.extract_btn.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         layout.addWidget(self.extract_btn)
         
         # Metrics
         metrics_layout = QHBoxLayout()
-        self.extract_chars = QLabel("📊 Символов: 0")
+        self.extract_chars = QLabel(" Символов: 0")
         self.extract_chars.setFont(QFont("Segoe UI", 9))
-        self.extract_words = QLabel("📝 Слов: 0")
+        self.extract_words = QLabel(" Слов: 0")
         self.extract_words.setFont(QFont("Segoe UI", 9))
         metrics_layout.addWidget(self.extract_chars)
         metrics_layout.addStretch()
@@ -805,7 +806,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.setSpacing(15)
         
         # Title
-        title = QLabel("ℹ️ Справка и инструкции")
+        title = QLabel(" Справка и инструкции")
         title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #667eea;")
@@ -817,40 +818,38 @@ class AIWebsiteReaderApp(QMainWindow):
         help_content = """
 🚀 КАК ИСПОЛЬЗОВАТЬ AI WEBSITE READER?
 
-1️⃣ РЕЗЮМИРОВАНИЕ
+ РЕЗЮМИРОВАНИЕ
    • Введите URL сайта
    • Нажмите "Анализировать"
    • Получите краткое резюме содержимого
 
-2️⃣ АНАЛИЗ С ВОПРОСОМ
+ АНАЛИЗ С ВОПРОСОМ
    • Введите URL и задайте вопрос
    • ИИ найдет ответ в содержимом сайта
    • Используется для поиска конкретной информации
 
-3️⃣ ИЗВЛЕЧЕНИЕ ТЕКСТА
+ ИЗВЛЕЧЕНИЕ ТЕКСТА
    • Извлекает чистый текст со страницы
    • Удаляет весь HTML и скрипты
    • Можно скачать как текстовый файл
 
-⚙️ НАСТРОЙКИ
+ НАСТРОЙКИ
    • JavaScript рендеринг: Для сайтов с динамическим контентом
    • Текст в речь: Преобразует результаты в аудио
    • Модель ИИ: Выберите между GPT-3.5 и GPT-4
    • Длина резюме: Регулируйте максимальную длину результатов
 
-💡 СОВЕТЫ
+ СОВЕТЫ
    • Убедитесь, что у вас активный OpenAI API key
    • Для лучших результатов используйте GPT-4
    • Текст-в-речь работает только с английским голосом
    • История сохраняется для всех анализов в текущей сессии
 
-🎨 ИНТЕРФЕЙС
+ ИНТЕРФЕЙС
    • Боковая панель содержит все основные настройки
    • Вкладки позволяют быстро переключаться между задачами
    • Результаты отображаются в реальном времени
 
----
-Разработано с ❤️ для умного веб-анализа
         """
         help_text.setText(help_content)
         layout.addWidget(help_text)
