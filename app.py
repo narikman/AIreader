@@ -27,6 +27,12 @@ except ImportError:
     print("OpenAI package required. Install: pip install openai")
     sys.exit(1)
 
+try:
+    import PyPDF2
+except ImportError:
+    print("PyPDF2 package required. Install: pip install PyPDF2")
+    sys.exit(1)
+
 
 class WorkerThread(QThread):
     """Worker thread for long-running operations"""
@@ -54,6 +60,8 @@ class WorkerThread(QThread):
                 result = self._analyze()
             elif self.task_type == "tts":
                 result = self._text_to_speech()
+            elif self.task_type == "extract_pdf":
+                result = self._extract_pdf_text()
             
             self.finished.emit(result)
         except Exception as e:
@@ -81,48 +89,58 @@ class WorkerThread(QThread):
         return response.text
     
     def _summarize(self):
-        content = self.content[:4000]
+        content = self.content[:8000]
+        # Calculate max_tokens based on desired length (approx 3 chars per token)
+        max_tokens = min(2000, self.max_length // 3 + 100)
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {
                     "role": "system",
-                    "content": "Вы полезный помощник, который кратко и точно резюмирует содержимое веб-сайтов на русском и английском языке."
+                    "content": "Вы полезный помощник, который кратко и точно резюмирует содержимое документов на русском и английском языке."
                 },
                 {
                     "role": "user",
-                    "content": f"Пожалуйста, резюмируйте следующее содержимое в {self.max_length} символов или меньше:\n\n{content}"
+                    "content": f"Пожалуйста, резюмируйте следующее содержимое, используя примерно {self.max_length} символов:\n\n{content}"
                 }
             ],
             temperature=0.7,
-            max_tokens=300
+            max_tokens=max_tokens
         )
         return response.choices[0].message.content
     
     def _analyze(self):
-        content = self.content[:4000]
+        content = self.content[:8000]
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {
                     "role": "system",
-                    "content": "Вы полезный помощник, который отвечает на вопросы о содержимом веб-сайтов. Отвечайте на русском языке."
+                    "content": "Вы полезный помощник, который отвечает на вопросы о содержимом документов. Отвечайте на русском языке."
                 },
                 {
                     "role": "user",
-                    "content": f"На основе следующего содержимого веб-сайта ответьте на этот вопрос: {self.query}\n\nСодержимое:\n{content}"
+                    "content": f"На основе следующего содержимого документа ответьте на этот вопрос: {self.query}\n\nСодержимое:\n{content}"
                 }
             ],
             temperature=0.7,
-            max_tokens=400
+            max_tokens=800
         )
         return response.choices[0].message.content
+    
+    def _extract_pdf_text(self):
+        """Extract text from PDF file"""
+        pdf_reader = PyPDF2.PdfReader(self.url)  # self.url will be the file path
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text
 
 
 class AIWebsiteReaderApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🤖 AI Website Reader v2.0")
+        self.setWindowTitle("AI Website Reader")
         self.setGeometry(100, 100, 1400, 850)
         self.setMinimumSize(1200, 750)
         
@@ -350,6 +368,7 @@ class AIWebsiteReaderApp(QMainWindow):
         tabs.addTab(self.create_extract_tab(), " Текст")
         tabs.addTab(self.create_tts_tab(), " Озвучивание")
         tabs.addTab(self.create_history_tab(), " История")
+        tabs.addTab(self.create_pdf_tab(), " PDF")
         tabs.addTab(self.create_help_tab(), "ℹ Справка")
         
         main_layout.addWidget(sidebar)
@@ -364,7 +383,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.setSpacing(12)
         
         # Header
-        header = QLabel("⚙️ НАСТРОЙКИ")
+        header = QLabel("НАСТРОЙКИ")
         header_font = QFont("Segoe UI", 13, QFont.Weight.Bold)
         header.setFont(header_font)
         header.setStyleSheet("color: #667eea; margin-bottom: 10px;")
@@ -377,7 +396,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(sep1)
         
         # API Key section
-        api_label = QLabel("🔑 OpenAI API Key:")
+        api_label = QLabel(" OpenAI API Key:")
         api_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(api_label)
         
@@ -391,16 +410,16 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addSpacing(15)
         
         # Settings section
-        settings_label = QLabel("🎨 ПАРАМЕТРЫ:")
+        settings_label = QLabel(" ПАРАМЕТРЫ:")
         settings_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(settings_label)
         
-        self.js_checkbox = QCheckBox("🔄 JavaScript рендеринг")
+        self.js_checkbox = QCheckBox(" JavaScript рендеринг")
         self.js_checkbox.setChecked(True)
         self.js_checkbox.setMinimumHeight(25)
         layout.addWidget(self.js_checkbox)
         
-        self.tts_checkbox = QCheckBox("🔊 Текст в речь (TTS)")
+        self.tts_checkbox = QCheckBox(" Текст в речь (TTS)")
         self.tts_checkbox.setChecked(False)
         self.tts_checkbox.setMinimumHeight(25)
         layout.addWidget(self.tts_checkbox)
@@ -420,13 +439,13 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addSpacing(15)
         
         # Length slider
-        length_label = QLabel("📏 Длина резюме:")
+        length_label = QLabel(" Длина резюме:")
         length_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(length_label)
         
         self.length_slider = QSlider(Qt.Orientation.Horizontal)
         self.length_slider.setMinimum(100)
-        self.length_slider.setMaximum(1000)
+        self.length_slider.setMaximum(3000)
         self.length_slider.setValue(500)
         self.length_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.length_slider.setMinimumHeight(40)
@@ -456,7 +475,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(info)
         
         # Exit button
-        exit_btn = QPushButton("❌ Выход")
+        exit_btn = QPushButton(" Выход")
         exit_btn.setMinimumHeight(40)
         exit_btn.clicked.connect(self.close)
         layout.addWidget(exit_btn)
@@ -471,14 +490,14 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.setSpacing(15)
         
         # Title
-        title = QLabel("📋 Резюмирование сайта")
+        title = QLabel(" Резюмирование сайта")
         title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #667eea;")
         layout.addWidget(title)
         
         # URL input
-        url_label = QLabel("🌐 URL:")
+        url_label = QLabel(" URL:")
         url_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(url_label)
         
@@ -488,7 +507,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(self.url_input_summarize)
         
         # Button
-        self.summarize_btn = QPushButton("🚀 Анализировать")
+        self.summarize_btn = QPushButton(" Анализировать")
         self.summarize_btn.setMinimumHeight(45)
         self.summarize_btn.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         layout.addWidget(self.summarize_btn)
@@ -523,14 +542,14 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.setSpacing(15)
         
         # Title
-        title = QLabel("❓ Анализ с вопросом")
+        title = QLabel("Анализ с вопросом")
         title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #667eea;")
         layout.addWidget(title)
         
         # URL input
-        url_label = QLabel("🌐 URL:")
+        url_label = QLabel("URL:")
         url_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(url_label)
         
@@ -540,7 +559,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(self.url_input_analyze)
         
         # Question input
-        question_label = QLabel("❓ Вопрос:")
+        question_label = QLabel(" Вопрос:")
         question_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(question_label)
         
@@ -550,7 +569,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(self.question_input)
         
         # Button
-        self.analyze_btn = QPushButton("🔍 Проанализировать")
+        self.analyze_btn = QPushButton(" Проанализировать")
         self.analyze_btn.setMinimumHeight(45)
         self.analyze_btn.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         layout.addWidget(self.analyze_btn)
@@ -579,14 +598,14 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.setSpacing(15)
         
         # Title
-        title = QLabel("📄 Извлечение текста")
+        title = QLabel(" Извлечение текста")
         title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #667eea;")
         layout.addWidget(title)
         
         # URL input
-        url_label = QLabel("🌐 URL:")
+        url_label = QLabel(" URL:")
         url_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(url_label)
         
@@ -619,7 +638,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(self.extract_result)
         
         # Download button
-        self.download_btn = QPushButton("⬇️ Скачать как TXT")
+        self.download_btn = QPushButton("⬇ Скачать как TXT")
         self.download_btn.setMinimumHeight(40)
         layout.addWidget(self.download_btn)
         
@@ -639,7 +658,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.setSpacing(15)
         
         # Title
-        title = QLabel("🎙️ Озвучивание сайта")
+        title = QLabel(" Озвучивание сайта")
         title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #667eea;")
@@ -652,7 +671,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(info)
         
         # Voice selection
-        voice_label = QLabel("🎭 Выберите голос персонажа:")
+        voice_label = QLabel(" Выберите голос персонажа:")
         voice_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(voice_label)
         
@@ -672,7 +691,7 @@ class AIWebsiteReaderApp(QMainWindow):
         self.selected_voice = "alloy"
         
         for voice_id, char_name in voices.items():
-            btn = QPushButton(f"🎤 {char_name}")
+            btn = QPushButton(f" {char_name}")
             btn.setMinimumHeight(60)
             btn.setMinimumWidth(100)
             btn.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
@@ -688,7 +707,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addSpacing(15)
         
         # Text input
-        text_label = QLabel("📝 Текст для озвучивания:")
+        text_label = QLabel(" Текст для озвучивания:")
         text_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(text_label)
         
@@ -700,12 +719,12 @@ class AIWebsiteReaderApp(QMainWindow):
         # Load buttons
         load_layout = QHBoxLayout()
         
-        self.load_summary_btn = QPushButton("📋 Загрузить из Резюме")
+        self.load_summary_btn = QPushButton(" Загрузить из Резюме")
         self.load_summary_btn.setMinimumHeight(38)
         self.load_summary_btn.clicked.connect(self.load_summary_to_tts)
         load_layout.addWidget(self.load_summary_btn)
         
-        self.load_extract_btn = QPushButton("📄 Загрузить из Текста")
+        self.load_extract_btn = QPushButton(" Загрузить из Текста")
         self.load_extract_btn.setMinimumHeight(38)
         self.load_extract_btn.clicked.connect(self.load_extract_to_tts)
         load_layout.addWidget(self.load_extract_btn)
@@ -713,7 +732,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addLayout(load_layout)
         
         # TTS button
-        self.tts_btn = QPushButton("🔊 Озвучить текст")
+        self.tts_btn = QPushButton(" Озвучить текст")
         self.tts_btn.setMinimumHeight(45)
         self.tts_btn.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         self.tts_btn.setStyleSheet("""
@@ -737,7 +756,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addSpacing(10)
         
         # Audio player
-        self.audio_label = QLabel("🎵 Аудио плеер:")
+        self.audio_label = QLabel(" Аудио плеер:")
         self.audio_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout.addWidget(self.audio_label)
         
@@ -749,14 +768,14 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(self.audio_output)
         
         # Play button
-        self.play_audio_btn = QPushButton("▶️ Воспроизвести аудио")
+        self.play_audio_btn = QPushButton(" Воспроизвести аудио")
         self.play_audio_btn.setMinimumHeight(40)
         self.play_audio_btn.setEnabled(False)
         self.play_audio_btn.clicked.connect(self.play_audio)
         layout.addWidget(self.play_audio_btn)
         
         # Download audio button
-        self.download_audio_btn = QPushButton("⬇️ Скачать аудио")
+        self.download_audio_btn = QPushButton("Скачать аудио")
         self.download_audio_btn.setMinimumHeight(40)
         self.download_audio_btn.setEnabled(False)
         self.download_audio_btn.clicked.connect(self.download_audio)
@@ -780,7 +799,7 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.setSpacing(15)
         
         # Title
-        title = QLabel("📊 История анализов")
+        title = QLabel("История анализов")
         title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
         title.setFont(title_font)
         title.setStyleSheet("color: #667eea;")
@@ -792,9 +811,89 @@ class AIWebsiteReaderApp(QMainWindow):
         layout.addWidget(self.history_list)
         
         # Clear button
-        self.clear_history_btn = QPushButton("🗑️ Очистить историю")
+        self.clear_history_btn = QPushButton("Очистить историю")
         self.clear_history_btn.setMinimumHeight(40)
         layout.addWidget(self.clear_history_btn)
+        
+        return widget
+    
+    def create_pdf_tab(self):
+        """Create PDF analysis tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(25, 25, 25, 25)
+        layout.setSpacing(15)
+        
+        # Title
+        title = QLabel(" Анализ PDF файлов")
+        title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
+        title.setFont(title_font)
+        title.setStyleSheet("color: #667eea;")
+        layout.addWidget(title)
+        
+        # File selection
+        file_label = QLabel(" Выберите PDF файл:")
+        file_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        layout.addWidget(file_label)
+        
+        file_layout = QHBoxLayout()
+        self.pdf_file_path = QLineEdit()
+        self.pdf_file_path.setPlaceholderText("Путь к PDF файлу...")
+        self.pdf_file_path.setMinimumHeight(38)
+        file_layout.addWidget(self.pdf_file_path)
+        
+        self.pdf_browse_btn = QPushButton(" Обзор")
+        self.pdf_browse_btn.setMinimumHeight(38)
+        file_layout.addWidget(self.pdf_browse_btn)
+        layout.addLayout(file_layout)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        self.pdf_extract_btn = QPushButton(" Извлечь текст")
+        self.pdf_extract_btn.setMinimumHeight(45)
+        self.pdf_extract_btn.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        buttons_layout.addWidget(self.pdf_extract_btn)
+        
+        self.pdf_summarize_btn = QPushButton(" Резюмировать")
+        self.pdf_summarize_btn.setMinimumHeight(45)
+        self.pdf_summarize_btn.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        buttons_layout.addWidget(self.pdf_summarize_btn)
+        layout.addLayout(buttons_layout)
+        
+        # Query input for analysis
+        query_label = QLabel(" Вопрос (для анализа):")
+        query_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        layout.addWidget(query_label)
+        
+        self.pdf_query_input = QLineEdit()
+        self.pdf_query_input.setPlaceholderText("Задайте вопрос по документу...")
+        self.pdf_query_input.setMinimumHeight(38)
+        layout.addWidget(self.pdf_query_input)
+        
+        self.pdf_analyze_btn = QPushButton(" Анализировать")
+        self.pdf_analyze_btn.setMinimumHeight(45)
+        self.pdf_analyze_btn.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        layout.addWidget(self.pdf_analyze_btn)
+        
+        layout.addSpacing(10)
+        
+        # Metrics
+        self.pdf_metrics = QLabel("Результаты появятся здесь...")
+        self.pdf_metrics.setFont(QFont("Segoe UI", 9))
+        self.pdf_metrics.setStyleSheet("color: #666;")
+        layout.addWidget(self.pdf_metrics)
+        
+        # Results
+        self.pdf_result = QTextEdit()
+        self.pdf_result.setReadOnly(True)
+        self.pdf_result.setMinimumHeight(300)
+        layout.addWidget(self.pdf_result)
+        
+        # Status
+        self.pdf_status = QLabel("✅ Готово")
+        self.pdf_status.setFont(QFont("Segoe UI", 9))
+        self.pdf_status.setStyleSheet("color: #28a745;")
+        layout.addWidget(self.pdf_status)
         
         return widget
     
@@ -816,12 +915,12 @@ class AIWebsiteReaderApp(QMainWindow):
         help_text = QTextEdit()
         help_text.setReadOnly(True)
         help_content = """
-🚀 КАК ИСПОЛЬЗОВАТЬ AI WEBSITE READER?
+КАК ИСПОЛЬЗОВАТЬ AI WEBSITE READER?
 
- РЕЗЮМИРОВАНИЕ
+ Содержание
    • Введите URL сайта
    • Нажмите "Анализировать"
-   • Получите краткое резюме содержимого
+   • Получите краткое содержание страницы
 
  АНАЛИЗ С ВОПРОСОМ
    • Введите URL и задайте вопрос
@@ -839,17 +938,6 @@ class AIWebsiteReaderApp(QMainWindow):
    • Модель ИИ: Выберите между GPT-3.5 и GPT-4
    • Длина резюме: Регулируйте максимальную длину результатов
 
- СОВЕТЫ
-   • Убедитесь, что у вас активный OpenAI API key
-   • Для лучших результатов используйте GPT-4
-   • Текст-в-речь работает только с английским голосом
-   • История сохраняется для всех анализов в текущей сессии
-
- ИНТЕРФЕЙС
-   • Боковая панель содержит все основные настройки
-   • Вкладки позволяют быстро переключаться между задачами
-   • Результаты отображаются в реальном времени
-
         """
         help_text.setText(help_content)
         layout.addWidget(help_text)
@@ -863,6 +951,10 @@ class AIWebsiteReaderApp(QMainWindow):
         self.extract_btn.clicked.connect(self.on_extract_clicked)
         self.download_btn.clicked.connect(self.on_download_clicked)
         self.clear_history_btn.clicked.connect(self.on_clear_history_clicked)
+        self.pdf_browse_btn.clicked.connect(self.on_pdf_browse_clicked)
+        self.pdf_extract_btn.clicked.connect(self.on_pdf_extract_clicked)
+        self.pdf_summarize_btn.clicked.connect(self.on_pdf_summarize_clicked)
+        self.pdf_analyze_btn.clicked.connect(self.on_pdf_analyze_clicked)
     
     def on_api_key_changed(self):
         """Update API key"""
@@ -1028,8 +1120,8 @@ class AIWebsiteReaderApp(QMainWindow):
             
             elif task_type == "extract":
                 self.extract_result.setText(self.current_text)
-                self.extract_chars.setText(f"📊 Символов: {len(self.current_text)}")
-                self.extract_words.setText(f"📝 Слов: {len(self.current_text.split())}")
+                self.extract_chars.setText(f" Символов: {len(self.current_text)}")
+                self.extract_words.setText(f" Слов: {len(self.current_text.split())}")
                 self.extract_status.setText("✅ Текст извлечен")
                 self.extract_status.setStyleSheet("color: #28a745;")
                 self.extract_btn.setEnabled(True)
@@ -1040,7 +1132,7 @@ class AIWebsiteReaderApp(QMainWindow):
     def on_summarize_complete(self, result):
         """Handle summarize completion"""
         self.summarize_result.setText(result)
-        self.summarize_metrics.setText(f"📄 {self.current_title} | 📊 {len(self.current_text)} символов")
+        self.summarize_metrics.setText(f" {self.current_title} |  {len(self.current_text)} символов")
         self.summarize_status.setText("✅ Резюме готово")
         self.summarize_status.setStyleSheet("color: #28a745;")
         self.summarize_btn.setEnabled(True)
@@ -1168,7 +1260,7 @@ class AIWebsiteReaderApp(QMainWindow):
             self.show_error("Ошибка", "Сначала создайте резюме сайта")
             return
         self.tts_text_input.setText(text)
-        self.tts_status.setText("📋 Текст загружен из резюме")
+        self.tts_status.setText(" Текст загружен из резюме")
         self.tts_status.setStyleSheet("color: #667eea;")
     
     
@@ -1179,7 +1271,7 @@ class AIWebsiteReaderApp(QMainWindow):
             self.show_error("Ошибка", "Сначала извлеките текст из сайта")
             return
         self.tts_text_input.setText(text)
-        self.tts_status.setText("📄 Текст загружен из извлечения")
+        self.tts_status.setText(" Текст загружен из извлечения")
         self.tts_status.setStyleSheet("color: #667eea;")
     
     
@@ -1194,7 +1286,7 @@ class AIWebsiteReaderApp(QMainWindow):
             self.show_error("Ошибка", "Введите текст для озвучивания")
             return
         
-        self.tts_status.setText("⏳ Генерирую аудио...")
+        self.tts_status.setText(" Генерирую аудио...")
         self.tts_status.setStyleSheet("color: #ffc107;")
         self.tts_btn.setEnabled(False)
         
@@ -1226,7 +1318,7 @@ class AIWebsiteReaderApp(QMainWindow):
     def on_tts_error(self, error):
         """Handle TTS error"""
         self.show_error("Ошибка озвучивания", error)
-        self.tts_status.setText("❌ Ошибка")
+        self.tts_status.setText(" Ошибка")
         self.tts_status.setStyleSheet("color: #dc3545;")
         self.tts_btn.setEnabled(True)
     
@@ -1270,6 +1362,131 @@ class AIWebsiteReaderApp(QMainWindow):
                 self.show_info("Успех", f"Аудио сохранено:\n{filename}")
             except Exception as e:
                 self.show_error("Ошибка сохранения", str(e))
+    
+    def on_pdf_browse_clicked(self):
+        """Handle PDF browse button click"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Выберите PDF файл",
+            "",
+            "PDF Files (*.pdf);;All Files (*)"
+        )
+        if filename:
+            self.pdf_file_path.setText(filename)
+    
+    def on_pdf_extract_clicked(self):
+        """Handle PDF extract button click"""
+        if not self.api_key:
+            self.show_error("Ошибка", "Введите OpenAI API Key")
+            return
+        
+        file_path = self.pdf_file_path.text().strip()
+        if not file_path or not os.path.exists(file_path):
+            self.show_error("Ошибка", "Выберите существующий PDF файл")
+            return
+        
+        self.pdf_status.setText("⏳ Извлекаю текст...")
+        self.pdf_status.setStyleSheet("color: #ffc107;")
+        self.pdf_extract_btn.setEnabled(False)
+        self.pdf_summarize_btn.setEnabled(False)
+        self.pdf_analyze_btn.setEnabled(False)
+        
+        # Clean up old thread if exists
+        if self.worker_thread:
+            self.worker_thread.quit()
+            self.worker_thread.wait()
+        
+        self.worker_thread = WorkerThread("extract_pdf", file_path, client=self.client)
+        self.worker_thread.finished.connect(self.on_pdf_text_extracted)
+        self.worker_thread.error.connect(lambda err: self.on_worker_error(err, "pdf"))
+        self.worker_thread.start()
+    
+    def on_pdf_summarize_clicked(self):
+        """Handle PDF summarize button click"""
+        if not self.api_key:
+            self.show_error("Ошибка", "Введите OpenAI API Key")
+            return
+        
+        if not self.current_text:
+            self.show_error("Ошибка", "Сначала извлеките текст из PDF")
+            return
+        
+        self.pdf_status.setText("⏳ Создаю резюме...")
+        self.pdf_status.setStyleSheet("color: #ffc107;")
+        self.pdf_extract_btn.setEnabled(False)
+        self.pdf_summarize_btn.setEnabled(False)
+        self.pdf_analyze_btn.setEnabled(False)
+        
+        # Clean up old thread if exists
+        if self.worker_thread:
+            self.worker_thread.quit()
+            self.worker_thread.wait()
+        
+        max_length = self.length_slider.value()
+        self.worker_thread = WorkerThread("summarize", "", content=self.current_text, client=self.client, max_length=max_length)
+        self.worker_thread.finished.connect(lambda result: self.on_pdf_summarized(result))
+        self.worker_thread.error.connect(lambda err: self.on_worker_error(err, "pdf"))
+        self.worker_thread.start()
+    
+    def on_pdf_analyze_clicked(self):
+        """Handle PDF analyze button click"""
+        if not self.api_key:
+            self.show_error("Ошибка", "Введите OpenAI API Key")
+            return
+        
+        if not self.current_text:
+            self.show_error("Ошибка", "Сначала извлеките текст из PDF")
+            return
+        
+        query = self.pdf_query_input.text().strip()
+        if not query:
+            self.show_error("Ошибка", "Введите вопрос")
+            return
+        
+        self.pdf_status.setText("⏳ Анализирую...")
+        self.pdf_status.setStyleSheet("color: #ffc107;")
+        self.pdf_extract_btn.setEnabled(False)
+        self.pdf_summarize_btn.setEnabled(False)
+        self.pdf_analyze_btn.setEnabled(False)
+        
+        # Clean up old thread if exists
+        if self.worker_thread:
+            self.worker_thread.quit()
+            self.worker_thread.wait()
+        
+        self.worker_thread = WorkerThread("analyze", "", query=query, content=self.current_text, client=self.client)
+        self.worker_thread.finished.connect(lambda result: self.on_pdf_analyzed(result))
+        self.worker_thread.error.connect(lambda err: self.on_worker_error(err, "pdf"))
+        self.worker_thread.start()
+    
+    def on_pdf_text_extracted(self, text):
+        """Handle PDF text extraction completion"""
+        self.current_text = text
+        self.pdf_result.setPlainText(text)
+        self.pdf_metrics.setText(f" Длина текста: {len(text)} символов")
+        self.pdf_status.setText("✅ Текст извлечен")
+        self.pdf_status.setStyleSheet("color: #28a745;")
+        self.pdf_extract_btn.setEnabled(True)
+        self.pdf_summarize_btn.setEnabled(True)
+        self.pdf_analyze_btn.setEnabled(True)
+    
+    def on_pdf_summarized(self, summary):
+        """Handle PDF summarization completion"""
+        self.pdf_result.setPlainText(summary)
+        self.pdf_status.setText("✅ Резюме готово")
+        self.pdf_status.setStyleSheet("color: #28a745;")
+        self.pdf_extract_btn.setEnabled(True)
+        self.pdf_summarize_btn.setEnabled(True)
+        self.pdf_analyze_btn.setEnabled(True)
+    
+    def on_pdf_analyzed(self, answer):
+        """Handle PDF analysis completion"""
+        self.pdf_result.setPlainText(answer)
+        self.pdf_status.setText("✅ Анализ завершен")
+        self.pdf_status.setStyleSheet("color: #28a745;")
+        self.pdf_extract_btn.setEnabled(True)
+        self.pdf_summarize_btn.setEnabled(True)
+        self.pdf_analyze_btn.setEnabled(True)
 
 
 def main():
